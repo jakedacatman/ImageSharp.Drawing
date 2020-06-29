@@ -66,6 +66,39 @@ namespace SixLabors.ImageSharp.Drawing.Benchmarks.Drawing
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Vector2 FindIntersection(in Segment target)
         {
+            Vector2 v1 = this.End - this.Start;
+            Vector2 v2 = target.End - target.Start;
+            Vector2 v3 = this.Start - target.Start;
+
+            Vector2 c1 = CrossProduct(v1, v2);
+            Vector2 c2 = CrossProduct(v2, v3);
+
+            if (NearEqual(c1, Vector2.Zero))
+            {
+                // DirectX Maths does a separate near-equal check
+                // if (NearEqual(C2,  Vector2.Zero))
+                // returning two separate error results
+                // Coincident : Infinity
+                // Parallel : NaN
+                return MaxVector;
+            }
+
+            // Intersection point = start + v1 * (c2 / c1)
+            Vector2 point = this.Start + (v1 * (c2 / c1));
+
+            // TODO: Why are intersections falling out of bounds?
+            // DirectX Maths does not need to do this.
+            if (IsOnSegments(in this, in target, ref point))
+            {
+                return point;
+            }
+
+            return MaxVector;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Vector2 FindIntersection2(in Segment target)
+        {
             Vector2 line1Start = this.Start;
             Vector2 line1End = this.End;
             Vector2 line2Start = target.Start;
@@ -107,7 +140,7 @@ namespace SixLabors.ImageSharp.Drawing.Benchmarks.Drawing
 
             var point = new Vector2((float)x, (float)y);
 
-            if (IsOnSegments(in this, in target, point))
+            if (IsOnSegments(in this, in target, ref point))
             {
                 return point;
             }
@@ -116,7 +149,7 @@ namespace SixLabors.ImageSharp.Drawing.Benchmarks.Drawing
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool IsOnSegments(in Segment seg1, in Segment seg2, Vector2 q)
+        private static bool IsOnSegments(in Segment seg1, in Segment seg2, ref Vector2 q)
         {
             float t = q.X - Epsilon2;
             if (t > seg1.Max.X || t > seg2.Max.X)
@@ -143,6 +176,21 @@ namespace SixLabors.ImageSharp.Drawing.Benchmarks.Drawing
             }
 
             return true;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+
+        private static Vector2 CrossProduct(Vector2 v1, Vector2 v2)
+        {
+            return new Vector2((v1.X * v2.Y) - (v1.Y * v2.X), (v1.X * v2.Y) - (v1.Y * v2.X));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool NearEqual(Vector2 v1, Vector2 v2)
+        {
+            const float epsilon = 1.192092896e-7F;
+            var dxy = Vector2.Abs(v1 - v2);
+            return (dxy.X <= epsilon) && (dxy.Y <= epsilon);
         }
     }
 
@@ -241,9 +289,8 @@ namespace SixLabors.ImageSharp.Drawing.Benchmarks.Drawing
     // [Host]     : .NET Core 3.1.5 (CoreCLR 4.700.20.26901, CoreFX 4.700.20.27001), X64 RyuJIT
     // DefaultJob : .NET Core 3.1.5 (CoreCLR 4.700.20.26901, CoreFX 4.700.20.27001), X64 RyuJIT
     //
-    //
     // |                 Method |     Mean |    Error |   StdDev | Ratio | RatioSD |
     // |----------------------- |---------:|---------:|---------:|------:|--------:|
-    // |  FindIntersectionClass | 25.11 ns | 0.593 ns | 1.157 ns |  1.00 |    0.00 |
-    // | FindIntersectionStruct | 19.50 ns | 0.359 ns | 0.300 ns |  0.75 |    0.04 |
+    // |  FindIntersectionClass | 24.50 ns | 0.414 ns | 0.387 ns |  1.00 |    0.00 |
+    // | FindIntersectionStruct | 18.44 ns | 0.217 ns | 0.192 ns |  0.75 |    0.02 |
 }

@@ -905,8 +905,6 @@ namespace SixLabors.ImageSharp.Drawing
         private readonly struct Segment
         {
             private static readonly Vector2 MaxVector = new Vector2(float.MaxValue);
-            private const float Epsilon = 0.003f;
-            private const float Epsilon2 = 0.2f;
             public readonly Vector2 Start;
             public readonly Vector2 End;
             public readonly Vector2 Min;
@@ -927,48 +925,28 @@ namespace SixLabors.ImageSharp.Drawing
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public Vector2 FindIntersection(in Segment target)
             {
-                Vector2 line1Start = this.Start;
-                Vector2 line1End = this.End;
-                Vector2 line2Start = target.Start;
-                Vector2 line2End = target.End;
+                Vector2 v1 = this.End - this.Start;
+                Vector2 v2 = target.End - target.Start;
+                Vector2 v3 = this.Start - target.Start;
 
-                // Use double precision for the intermediate calculations, because single precision calculations
-                // easily gets over the Epsilon2 threshold for bitmap sizes larger than about 1500.
-                // This is still symptom fighting though, and probably the intersection finding algorithm
-                // should be looked over in the future (making the segments fat using epsilons doesn't truely fix the
-                // robustness problem).
-                // Future potential improvement: the precision problem will be reduced if the center of the bitmap is used as origin (0, 0),
-                // this will keep coordinates smaller and relatively precision will be larger.
-                double x1, y1, x2, y2, x3, y3, x4, y4;
-                x1 = line1Start.X;
-                y1 = line1Start.Y;
-                x2 = line1End.X;
-                y2 = line1End.Y;
+                Vector2 c1 = CrossProduct(v1, v2);
+                Vector2 c2 = CrossProduct(v2, v3);
 
-                x3 = line2Start.X;
-                y3 = line2Start.Y;
-                x4 = line2End.X;
-                y4 = line2End.Y;
-
-                double x12 = x1 - x2;
-                double y12 = y1 - y2;
-                double x34 = x3 - x4;
-                double y34 = y3 - y4;
-
-                double det = (x12 * y34) - (y12 * x34);
-                if (det > -Epsilon && det < Epsilon)
+                if (NearEqual(c1, Vector2.Zero))
                 {
+                    // DirectX Maths does a separate near-equal check
+                    // if (NearEqual(C2,  Vector2.Zero))
+                    // returning two separate error results
+                    // Coincident : Infinity
+                    // Parallel : NaN
                     return MaxVector;
                 }
 
-                double u = (x1 * y2) - (x2 * y1);
-                double v = (x3 * y4) - (x4 * y3);
-                double x = ((x34 * u) - (x12 * v)) * 1F / det;
-                double y = ((y34 * u) - (y12 * v)) * 1F / det;
+                Vector2 point = this.Start + (v1 * (c2 / c1));
 
-                var point = new Vector2((float)x, (float)y);
-
-                if (IsOnSegments(in this, in target, point))
+                // TODO: Why are intersections falling out of bounds?
+                // DirectX Maths does not need to do this and uses single precision.
+                if (IsOnSegments(in this, in target, ref point))
                 {
                     return point;
                 }
@@ -977,33 +955,49 @@ namespace SixLabors.ImageSharp.Drawing
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            private static bool IsOnSegments(in Segment seg1, in Segment seg2, Vector2 q)
+            private static bool IsOnSegments(in Segment seg1, in Segment seg2, ref Vector2 q)
             {
-                float t = q.X - Epsilon2;
+                const float epsilon = 0.2f;
+
+                float t = q.X - epsilon;
                 if (t > seg1.Max.X || t > seg2.Max.X)
                 {
                     return false;
                 }
 
-                t = q.X + Epsilon2;
+                t = q.X + epsilon;
                 if (t < seg1.Min.X || t < seg2.Min.X)
                 {
                     return false;
                 }
 
-                t = q.Y - Epsilon2;
+                t = q.Y - epsilon;
                 if (t > seg1.Max.Y || t > seg2.Max.Y)
                 {
                     return false;
                 }
 
-                t = q.Y + Epsilon2;
+                t = q.Y + epsilon;
                 if (t < seg1.Min.Y || t < seg2.Min.Y)
                 {
                     return false;
                 }
 
                 return true;
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static Vector2 CrossProduct(Vector2 v1, Vector2 v2)
+            {
+                return new Vector2((v1.X * v2.Y) - (v1.Y * v2.X), (v1.X * v2.Y) - (v1.Y * v2.X));
+            }
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static bool NearEqual(Vector2 v1, Vector2 v2)
+            {
+                const float epsilon = 1.192092896e-7F;
+                var dxy = Vector2.Abs(v1 - v2);
+                return (dxy.X <= epsilon) && (dxy.Y <= epsilon);
             }
         }
     }
